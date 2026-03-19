@@ -1,0 +1,25 @@
+View Rahul Madaan
+
+https://www.linkedin.com/posts/rahul--madaan_kubernetes-systemdesign-sitereliability-activity-7440261481792901121-ZW3D?utm_source=share&utm_medium=member_desktop&rcm=ACoAACGOFWwBXBdYtkoJw0nX7bLyQWUEVCBMsEk
+ 
+
+On Monday I mentioned I was offline for 2 weeks fighting a massive architectural fire. Here is the exact RCA of how our own auto-scaler DDOS'd our database.
+
+Our stack looked like textbook "Best Practice: EKS", 15 microservices, Managed Postgres and an HPA (Horizontal Pod Autoscaler) set to trigger at 70% CPU.
+
+The fatal flaw was synchronous inter-service communication. Our Checkout Service made a synchronous HTTP call to our Auth Service, which then queried the database.
+
+When a 4x traffic spike hit at 2:00 AM:
+1. The Auth DB queries slowed down under load.
+2. Checkout HTTP requests timed out, triggering an immediate retry (with zero exponential backoff).
+3. Auth was suddenly handling the actual traffic spike PLUS 3x retries from upstream.
+
+Then, Kubernetes made it lethal. The HPA saw Auth CPU spike to 90% and did exactly what it was told: It spun up 20 new pods. But every new pod immediately opened 10 new direct connections to Postgres.
+
+Within seconds, we hit the max_connections limit. The database locked up entirely. We didn't die from the traffic spike; we died from our own retry logic and auto-scaler.
+
+On Monday, I’ll share exactly what we did at 3:00 AM to stop the bleeding.
+
+Have you ever watched an auto-scaler accidentally kill a database? Let’s hear the war stories below.
+
+Found this useful? I break down complex DevOps challenges every day. Follow me (Rahul Madaan) for more insights
